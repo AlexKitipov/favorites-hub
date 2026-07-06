@@ -1,0 +1,349 @@
+/* -----------------------------------------------------------------------
+   Design tokens
+   Palette: graphite base with a warm amber "bookmark ribbon" accent.
+   Each source browser gets its own recognizable dot color, echoing the
+   ribbon markers on physical bookmarks — the tab you actually reach for.
+----------------------------------------------------------------------- */
+:root {
+  --bg: #14161a;
+  --surface: #1b1e25;
+  --surface-hover: #23272f;
+  --border: #2a2e37;
+  --text: #edf0f4;
+  --text-muted: #9298a6;
+  --accent: #e8a33d;
+  --accent-dim: #e8a33d33;
+
+  --chrome: #4285f4;
+  --edge: #0a5ec1;
+  --firefox: #ff7139;
+  --brave: #fb542b;
+
+  --font-display: 'Space Grotesk', sans-serif;
+  --font-body: 'Inter', sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+}
+
+button {
+  font-family: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+/* -----------------------------------------------------------------------
+   Shell / header
+----------------------------------------------------------------------- */
+.app-shell {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.app-header {
+  padding: 2rem 2.5rem 0;
+  border-bottom: 1px solid var(--border);
+  background: linear-gradient(180deg, var(--surface) 0%, var(--bg) 100%);
+}
+
+.app-header__title {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 1.65rem;
+  letter-spacing: -0.02em;
+  margin: 0 0 1.5rem;
+  position: relative;
+  display: inline-block;
+}
+
+/* Signature element: a small amber "ribbon" tick, the one bold accent mark
+   on an otherwise disciplined graphite page. */
+.app-header__title::after {
+  content: '';
+  position: absolute;
+  left: -0.85rem;
+  top: 0.15rem;
+  width: 0.4rem;
+  height: 1.15rem;
+  background: var(--accent);
+  clip-path: polygon(0 0, 100% 0, 100% 100%, 50% 75%, 0 100%);
+}
+
+.app-main {
+  flex: 1;
+  padding: 2rem 2.5rem 3rem;
+  max-width: 1200px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+/* -----------------------------------------------------------------------
+   Tabs
+----------------------------------------------------------------------- */
+.tabs-container {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.tab-button {
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 0.65rem 0.1rem;
+  margin-right: 1.75rem;
+  font-size: 0.92rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+.tab-button:hover {
+  color: var(--text);
+}
+
+.tab-button--active {
+  color: var(--text);
+  border-bottom-color: var(--accent);
+}
+
+/* -----------------------------------------------------------------------
+   Favorites page toolbar
+----------------------------------------------------------------------- */
+.favorites-page__toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+  margin-bottom: 1.75rem;
+}
+
+.browser-filter {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.browser-filter__chip {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.4rem 0.9rem;
+  font-size: 0.82rem;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.browser-filter__chip:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+.browser-filter__chip--active {
+  background: var(--accent-dim);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.search-bar {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.55rem 0.9rem;
+  color: var(--text);
+  font-size: 0.9rem;
+  min-width: 240px;
+  flex: 1;
+  max-width: 320px;
+}
+
+.search-bar::placeholder {
+  color: var(--text-muted);
+}
+
+.search-bar:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.favorites-page__status {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  padding: 2rem 0;
+  text-align: center;
+}
+
+.favorites-page__status--error {
+  color: var(--brave);
+}
+
+/* -----------------------------------------------------------------------
+   Favorites grid + card
+----------------------------------------------------------------------- */
+.favorites-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 1rem;
+}
+
+.favorite-card {
+  position: relative;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1.1rem 0.9rem 0.9rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.6rem;
+  text-align: center;
+  transition: transform 0.12s ease, background 0.12s ease, border-color 0.12s ease;
+}
+
+.favorite-card:hover {
+  background: var(--surface-hover);
+  border-color: var(--accent);
+  transform: translateY(-2px);
+}
+
+.favorite-card:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.favorite-card__browser-dot {
+  position: absolute;
+  top: 0.65rem;
+  right: 0.65rem;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.favorite-card__browser-dot--chrome {
+  background: var(--chrome);
+}
+.favorite-card__browser-dot--edge {
+  background: var(--edge);
+}
+.favorite-card__browser-dot--firefox {
+  background: var(--firefox);
+}
+.favorite-card__browser-dot--brave {
+  background: var(--brave);
+}
+
+.favorite-card__icon-wrap {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg);
+  border-radius: 8px;
+}
+
+.favorite-card__icon {
+  width: 22px;
+  height: 22px;
+}
+
+.favorite-card__icon-fallback {
+  font-family: var(--font-display);
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.favorite-card__title {
+  font-size: 0.85rem;
+  font-weight: 500;
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.favorite-card__browser-label {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* -----------------------------------------------------------------------
+   Placeholder pages (Recent Apps / Recent Files / All Programs)
+----------------------------------------------------------------------- */
+.placeholder-page {
+  border: 1px dashed var(--border);
+  border-radius: 12px;
+  padding: 3rem 1.5rem;
+  text-align: center;
+  color: var(--text-muted);
+}
+
+.placeholder-page__title {
+  font-family: var(--font-display);
+  font-size: 1.1rem;
+  color: var(--text);
+  margin: 0 0 0.5rem;
+}
+
+.placeholder-page__hint {
+  font-size: 0.88rem;
+  max-width: 420px;
+  margin: 0 auto;
+  line-height: 1.5;
+}
+
+/* -----------------------------------------------------------------------
+   Responsive
+----------------------------------------------------------------------- */
+@media (max-width: 640px) {
+  .app-header {
+    padding: 1.5rem 1.25rem 0;
+  }
+
+  .app-main {
+    padding: 1.5rem 1.25rem 2rem;
+  }
+
+  .favorites-page__toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .search-bar {
+    max-width: none;
+  }
+
+  .favorites-grid {
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .favorite-card {
+    transition: none;
+  }
+}
