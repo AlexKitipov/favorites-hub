@@ -1,4 +1,3 @@
-
 # ⭐ Favorites Hub
 A modern, fast and minimal **Electron + React + TypeScript** desktop application that displays all your browser bookmarks in one unified, elegant interface.  
 Built with **Vite**, **Electron IPC**, and a clean modular architecture.
@@ -25,27 +24,26 @@ Built with **Vite**, **Electron IPC**, and a clean modular architecture.
   ```ts
   window.api.getBookmarks()
   window.api.openExternal(url)
+  ```
 
-Responsive UI  
-Clean dark graphite theme with amber accents, optimized for desktop and small screens.
+- **Responsive UI**  
+  Clean dark graphite theme with amber accents, optimized for desktop and small screens.
 
-Modular tab system  
-Adding a new tab requires only:
+- **Modular tab system**  
+  Adding a new tab requires only:
+  - A new entry in `TABS` (in `App.tsx`)
+  - A new component rendered in the switch-case
 
-A new entry in TABS (in App.tsx)
+- **Electron production-ready build**  
+  - `base: './'` for correct `file://` loading  
+  - Separate `tsconfig.electron.json` for main/preload  
+  - Output to `dist-electron/`
 
-A new component rendered in the switch-case
+---
 
-Electron production-ready build
+## 🧩 Project Structure
 
-base: './' for correct file:// loading
-
-Separate tsconfig.electron.json for main/preload
-
-Output to dist-electron/
-
-🧩 Project Structure
-
+```
 favorites-hub/
 │
 ├── electron/
@@ -71,60 +69,69 @@ favorites-hub/
 ├── tsconfig.json
 ├── package.json
 └── README.md
+```
 
-🔧 Installation
+---
 
+## 🔧 Installation
+
+```bash
 git clone https://github.com/AlexKitipov/favorites-hub
 cd favorites-hub
 npm install
+```
 
-🛠 Development
+---
+
+## 🛠 Development
+
 Start Vite + Electron together:
 
+```bash
 npm run electron:dev
+```
 
 This runs:
+- Vite dev server  
+- Electron main process (watch mode)  
+- Preload compilation  
 
-Vite dev server
+---
 
-Electron main process (watch mode)
+## 📦 Production Build
 
-Preload compilation
-
-📦 Production Build
-
+```bash
 npm run electron:package
+```
 
 This produces:
+- `dist/` – Vite renderer build  
+- `dist-electron/` – Electron main + preload  
+- Fully functional production Electron app
 
-dist/ – Vite renderer build
+---
 
-dist-electron/ – Electron main + preload
+## 🔒 Security
 
-Fully functional production Electron app
+- `contextIsolation: true`  
+- `nodeIntegration: false`  
+- Only explicit APIs are exposed to the renderer  
+- No direct filesystem access from React
 
-🔒 Security
-contextIsolation: true
+---
 
-nodeIntegration: false
+## 🗺 Roadmap
 
-Only explicit APIs are exposed to the renderer
+- Firefox bookmark loading via `places.sqlite`
+- Recent Apps (Windows Registry + Start Menu)
+- Recent Files (Jump Lists + MRU)
+- Installed Programs (Registry Uninstall keys)
+- Custom bookmark categories
+- Search and filtering
 
-No direct filesystem access from React
+---
 
-🗺 Roadmap
-Firefox bookmark loading via places.sqlite
+## 📄 License
 
-Recent Apps (Windows Registry + Start Menu)
-
-Recent Files (Jump Lists + MRU)
-
-Installed Programs (Registry Uninstall keys)
-
-Custom bookmark categories
-
-Search and filtering
-
-📄 License
-MIT License
+MIT License  
 Copyright © 2026 AlexKitipov
