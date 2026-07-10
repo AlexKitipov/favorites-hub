@@ -1,0 +1,1679 @@
+diff --git a/.gitignore b/.gitignore
+new file mode 100644
+index 0000000..fcb9caa
+--- /dev/null
++++ b/.gitignore
+@@ -0,0 +1,5 @@
++node_modules/
++dist/
++dist-electron/
++*.tsbuildinfo
++.DS_Store
+diff --git a/README.md b/README.md
+index a3f6359..8fe1efa 100644
+--- a/README.md
++++ b/README.md
+@@ -1,137 +1,213 @@
+ # ⭐ Favorites Hub
+-A modern, fast and minimal **Electron + React + TypeScript** desktop application that displays all your browser bookmarks in one unified, elegant interface.  
+-Built with **Vite**, **Electron IPC**, and a clean modular architecture.
++
++A Windows desktop start page — built with **React + TypeScript + Vite + Electron** — that brings together everything you'd otherwise go hunting for across File Explorer and multiple browsers: your **bookmarks**, **recently used apps**, **recently opened files**, and **installed programs**, in one fast, keyboard-friendly grid.
+ 
+ ---
+ 
+-## 🚀 Features
+-
+-- **Unified bookmarks view**  
+-  Automatically loads bookmarks from:
+-  - Google Chrome  
+-  - Microsoft Edge  
+-  - Brave (Chromium-compatible)  
+-  - Firefox (planned – SQLite `places.sqlite` integration)
+-
+-- **Electron-powered filesystem access**  
+-  Real bookmark loading via `ipcMain.handle('get-bookmarks')`:
+-  - Reads Chromium bookmark JSON trees  
+-  - Recursively parses folders and URLs  
+-  - Normalizes results into a shared `FavoriteItem` type
+-
+-- **Secure IPC bridge**  
+-  `preload.ts` exposes a minimal, safe API:
+-  ```ts
+-  window.api.getBookmarks()
+-  window.api.openExternal(url)
+-  ```
++## 1. Project Overview
++
++### What it does
++
++Favorites Hub opens to a single page with four tabs:
++
++| Tab | Shows |
++|---|---|
++| **Favorites** | Bookmarks aggregated from Chrome, Edge, Brave, and Firefox |
++| **Recent Apps** | Recently launched programs (Windows UserAssist) |
++| **Recent Files** | Recently opened files (Windows Recent shell folder) |
++| **All Programs** | Everything installed on the machine, searchable |
+ 
+-- **Responsive UI**  
+-  Clean dark graphite theme with amber accents, optimized for desktop and small screens.
++Click any card to open it — a URL opens in your default browser, a file opens with its default app, an app launches directly.
+ 
+-- **Modular tab system**  
+-  Adding a new tab requires only:
+-  - A new entry in `TABS` (in `App.tsx`)
+-  - A new component rendered in the switch-case
++### Main features
+ 
+-- **Electron production-ready build**  
+-  - `base: './'` for correct `file://` loading  
+-  - Separate `tsconfig.electron.json` for main/preload  
+-  - Output to `dist-electron/`
++- **Real, unified bookmark loading** — not a mock: Chrome, Edge, and Brave bookmark JSON files, plus Firefox's `places.sqlite`, are all parsed and merged into one list with a favicon per item.
++- **Filter + search** on Favorites (by browser) and All Programs (by name).
++- **Windows-native data**, read via Electron's main process — no cloud sync, no third-party account, nothing leaves the machine.
++- **Icon extraction** for apps/programs via a small PowerShell bridge, cached per session.
++- **Runs standalone in a browser too** — without Electron, every tab falls back to representative mock data, so the UI is still fully explorable (e.g. for UI development, or a quick demo).
++
++### Technologies used
++
++- **React 18 + TypeScript** — UI
++- **Vite** — dev server & renderer build
++- **Electron** — desktop shell, filesystem/registry access via IPC
++- **better-sqlite3** — reads Firefox's `places.sqlite`
++- Windows `reg.exe` and PowerShell (`System.Drawing`), invoked via `child_process` — registry reads and icon extraction, with no native Windows-API addon required
+ 
+ ---
+ 
+-## 🧩 Project Structure
++## 2. Architecture
++
++### Folder structure
+ 
+ ```
+ favorites-hub/
++├── electron/                     # Electron main process (Node context, compiled separately)
++│   ├── main.ts                   # Window creation + IPC wiring only
++│   ├── preload.ts                # contextBridge — exposes window.api to the renderer
++│   ├── types.ts                  # Mirrors src/types/* for the main-process side
++│   └── services/
++│       ├── bookmarks/
++│       │   ├── chromium.ts       # Chrome / Edge / Brave — shared JSON tree parser
++│       │   ├── firefox.ts        # Firefox — places.sqlite via better-sqlite3
++│       │   └── index.ts          # getAllBookmarks() — merges all four sources
++│       └── windows/
++│           ├── registry.ts       # Thin wrapper around reg.exe (query/list subkeys)
++│           ├── recentApps.ts     # UserAssist registry → RecentApp[]
++│           ├── recentFiles.ts    # "Recent" shell folder → RecentFile[]
++│           ├── installedPrograms.ts  # Uninstall registry keys → InstalledProgram[]
++│           └── icons.ts          # PowerShell-based icon extraction, cached
+ │
+-├── electron/
+-│   ├── main.ts          # Electron main process (BrowserWindow + IPC)
+-│   ├── preload.ts       # Secure contextBridge API
+-│   └── tsconfig.electron.json
+-│
+-├── src/
+-│   ├── hooks/
+-│   │   └── useFavoritesLoader.ts   # Loads real bookmarks via window.api
+-│   ├── components/
+-│   │   └── FavoriteCard.tsx        # Opens links via Electron or window.open
+-│   ├── pages/
+-│   │   ├── FavoritesPage.tsx
+-│   │   ├── RecentAppsPage.tsx
+-│   │   ├── RecentFilesPage.tsx
+-│   │   └── AllProgramsPage.tsx
++├── src/                          # React renderer (Vite/ESM, browser context)
++│   ├── main.tsx / App.tsx / App.css
+ │   ├── types/
+-│   │   └── electron.d.ts           # Global type for window.api
+-│   └── App.tsx
++│   │   ├── favorites.ts          # FavoriteItem
++│   │   ├── future.ts             # RecentApp, RecentFile, InstalledProgram
++│   │   └── electron.d.ts         # window.api type declaration
++│   ├── components/
++│   │   ├── TabsContainer.tsx     # Pure tab switcher, knows nothing about tab content
++│   │   ├── FavoritesPage.tsx / FavoriteCard.tsx
++│   │   ├── RecentAppsPage.tsx / RecentFilesPage.tsx / AllProgramsPage.tsx
++│   │   └── EntityCard.tsx        # Shared card UI for the three non-bookmark tabs
++│   └── hooks/
++│       ├── useElectronDataLoader.ts   # Generic "Electron IPC, else mock" loader
++│       ├── useFavoritesLoader.ts
++│       ├── useRecentAppsLoader.ts
++│       ├── useRecentFilesLoader.ts
++│       ├── useInstalledProgramsLoader.ts
++│       └── useIconDataUrl.ts     # Lazy per-card icon resolution
+ │
+-├── vite.config.ts
+-├── tsconfig.json
+-├── package.json
+-└── README.md
++├── package.json / vite.config.ts / tsconfig.json / tsconfig.electron.json
+ ```
+ 
+----
++### Role of each directory
+ 
+-## 🔧 Installation
++- **`/src/components`** — presentation only. Each tab has a `*Page.tsx` (data-fetching via a hook + layout) and, for Favorites, a dedicated `FavoriteCard`; the other three tabs share `EntityCard`. `TabsContainer` is intentionally dumb — it renders whatever `tabs` array it's given and reports clicks; it has no knowledge of what each tab contains.
++- **`/src/hooks`** — all data-loading logic. Every hook follows the same shape: try Electron IPC, fall back to mock data, expose `{ data, isLoading, error }`. This is centralized in `useElectronDataLoader`, so each concrete hook is ~15 lines.
++- **`/src/types`** — shared TypeScript contracts (`FavoriteItem`, `RecentApp`, `RecentFile`, `InstalledProgram`) plus the `window.api` ambient declaration, so the renderer is fully typed against what Electron actually exposes.
++- **`/electron`** — everything that needs real OS access. Split into `services/bookmarks` (browser bookmark files) and `services/windows` (registry, shell folders, icon extraction), with `main.ts` reduced to just creating the window and registering one `ipcMain.handle(...)` per service call. This mirrors `src/types` on purpose but doesn't import from it — the main process compiles as CommonJS via a separate `tsconfig.electron.json`, so keeping it dependency-free of the renderer's ESM build avoids resolution issues.
+ 
+-```bash
+-git clone https://github.com/AlexKitipov/favorites-hub
+-cd favorites-hub
+-npm install
+-```
++### Tab system
+ 
+----
++`App.tsx` owns a single `activeTab: TabId` state (`'favorites' | 'recentApps' | 'recentFiles' | 'allPrograms'`) and a `TABS` array that's the single source of truth for what tabs exist and in what order. Switching is a plain `switch` statement rendering the matching page component — no router, since this is a single-window desktop app with no need for URL history. **Adding a new tab is two lines**: one entry in `TABS`, one `case` in the switch. `TabsContainer` never needs to change.
++
++### FavoritesPage / useFavoritesLoader
++
++`useFavoritesLoader` calls `window.api.getBookmarks()` when running in Electron (which internally calls `getAllBookmarks()` in the main process — Chrome + Edge + Brave + Firefox, aggregated) and falls back to a small in-memory mock list otherwise. `FavoritesPage` layers client-side filtering (by browser) and search (title/URL substring) on top of whatever list it received, and renders a responsive grid of `FavoriteCard`s. Clicking a card calls `window.api.openExternal(url)` in Electron, or `window.open` in plain-browser mode.
++
++### Future expansion points
+ 
+-## 🛠 Development
++- **More browsers** — Vivaldi, Opera, Arc all use the same Chromium bookmark JSON format; add a path + call `readChromiumBookmarks` (see `electron/services/bookmarks/chromium.ts`).
++- **Faster installed-programs load** — currently one `reg.exe` call per product key (~1-3s for 100+ apps). Could be cached to disk and refreshed on an interval instead of on every app launch.
++- **True `.lnk` target resolution** for Recent Files (currently returns the shortcut's own path) — needs either a `.lnk` binary parser or a `WScript.Shell` COM call via the same PowerShell-bridge pattern used in `icons.ts`.
++- **UserAssist format verification** — the binary offsets in `recentApps.ts` follow the commonly documented Windows 7+ layout, but Microsoft has changed this format across releases before; worth validating against a real machine before shipping.
++- **Start Menu shortcut scanning** as a secondary/fallback source for All Programs, for apps that don't register an Uninstall key (portable apps, some dev tools).
+ 
+-Start Vite + Electron together:
++---
++
++## 3. How to Run the Project
+ 
+ ```bash
++# 1. Install dependencies
++npm install
++# (this also rebuilds better-sqlite3's native binding against Electron's
++#  ABI via the postinstall script — see "Troubleshooting" below if it fails)
++
++# 2. Run as a plain browser app (mock data only, no Electron)
++npm run dev
++# → http://localhost:5173
++
++# 3. Run the full desktop app (real bookmarks/registry/files access)
+ npm run electron:dev
+ ```
+ 
+-This runs:
+-- Vite dev server  
+-- Electron main process (watch mode)  
+-- Preload compilation  
++`electron:dev` starts three things together: the Vite dev server, a `tsc --watch` compiling `electron/**/*.ts`, and Electron itself (waiting for both to be ready). Edit either the renderer or the main process and both hot-reload/relaunch appropriately.
+ 
+----
+-
+-## 📦 Production Build
++### Building for distribution
+ 
+ ```bash
+ npm run electron:package
+ ```
+ 
+-This produces:
+-- `dist/` – Vite renderer build  
+-- `dist-electron/` – Electron main + preload  
+-- Fully functional production Electron app
++This runs the full production build (`vite build` → `dist/`, `tsc -p tsconfig.electron.json` → `dist-electron/`) and launches the packaged app. For an installable `.exe`, wire in `electron-builder` or `electron-forge` on top of this — not included here.
++
++### Troubleshooting
++
++- **`better-sqlite3` fails to build during `npm install`** — it needs a native binding compiled (or downloaded prebuilt) for Electron's exact Node ABI. Make sure you have a working `node-gyp` toolchain (Python 3 + a C++ build tool — on Windows, the "Desktop development with C++" Visual Studio workload), then re-run `npm run postinstall` (or reinstall).
+ 
+ ---
+ 
+-## 🔒 Security
++## 4. How the Data Flow Works
+ 
+-- `contextIsolation: true`  
+-- `nodeIntegration: false`  
+-- Only explicit APIs are exposed to the renderer  
+-- No direct filesystem access from React
++### Mock data (no Electron)
+ 
+----
++Every hook in `src/hooks` checks `isElectron()` (`window.api !== undefined`). When false — running via plain `npm run dev` — each hook returns a small hardcoded array shaped exactly like the real data, so every page renders and is fully interactive without ever touching the filesystem.
+ 
+-## 🗺 Roadmap
++### Real data (Electron)
++
++```
++renderer (React)              preload.ts              main.ts / services
++─────────────────             ────────────             ──────────────────
++useFavoritesLoader()
++  window.api.getBookmarks() ─▶ ipcRenderer.invoke     ─▶ ipcMain.handle('get-bookmarks')
++                                 ('get-bookmarks')          → getAllBookmarks()
++                                                               ├─ readChromeBookmarks()   (JSON)
++                                                               ├─ readEdgeBookmarks()     (JSON)
++                                                               ├─ readBraveBookmarks()    (JSON)
++                                                               └─ readFirefoxBookmarks()  (SQLite)
++                              ◀── resolved FavoriteItem[] ◀──────────┘
++```
++
++- **Chrome / Edge / Brave**: all three store bookmarks as JSON at `%LocalAppData%\<Vendor>\<Browser>\User Data\Default\Bookmarks`, with the same tree shape (`roots.bookmark_bar` / `roots.other` / `roots.synced`, folders vs. `type: "url"` nodes). One shared recursive walker in `chromium.ts` handles all three.
++- **Firefox**: bookmarks live in a SQLite database (`places.sqlite`), not JSON. `firefox.ts` first resolves the active profile from `profiles.ini` (profile folder names are randomized), copies `places.sqlite` to a temp file (it's often locked while Firefox is running), and queries it with `better-sqlite3`:
++  ```sql
++  SELECT moz_bookmarks.title, moz_places.url
++  FROM moz_bookmarks
++  JOIN moz_places ON moz_bookmarks.fk = moz_places.id
++  WHERE moz_bookmarks.type = 1 AND moz_places.url IS NOT NULL
++  ```
++- **Recent Apps**: read from the `UserAssist` registry key (`HKCU\...\Explorer\UserAssist\{GUID}\Count`). Value names are ROT13-encoded; value data is a binary blob containing a run counter and a last-run `FILETIME`.
++- **Recent Files**: `%AppData%\Microsoft\Windows\Recent` — Explorer keeps this folder populated with one `.lnk` shortcut per recently opened file. Read via plain `fs.readdir` + `fs.stat`, no registry involved.
++- **Installed Programs**: enumerated from the three standard `Uninstall` registry keys (`HKLM` 64-bit, `HKLM\WOW6432Node` 32-bit, `HKCU` per-user), the same source Windows Settings → Apps uses.
++
++### IPC surface
++
++`electron/preload.ts` exposes exactly this on `window.api` (see `src/types/electron.d.ts` for the renderer-side type):
++
++```ts
++interface FavoritesElectronAPI {
++  getBookmarks: () => Promise<FavoriteItem[]>;
++  getRecentApps: () => Promise<RecentApp[]>;
++  getRecentFiles: () => Promise<RecentFile[]>;
++  getInstalledPrograms: () => Promise<InstalledProgram[]>;
++  getIcon: (targetPath: string) => Promise<string | null>;
++  openExternal: (url: string) => Promise<void>;
++}
++```
++
++`contextIsolation` is enabled and `nodeIntegration` is disabled — the renderer never gets direct `fs`/`child_process` access, only these six methods.
++
++---
+ 
+-- Firefox bookmark loading via `places.sqlite`
+-- Recent Apps (Windows Registry + Start Menu)
+-- Recent Files (Jump Lists + MRU)
+-- Installed Programs (Registry Uninstall keys)
+-- Custom bookmark categories
+-- Search and filtering
++## 5. Roadmap
++
++- [x] Chrome / Edge bookmark parsing
++- [x] Brave bookmark parsing
++- [x] Firefox bookmark parsing (`places.sqlite`)
++- [x] Recent Apps via Windows registry
++- [x] Recent Files via Windows Recent folder
++- [x] Installed Programs via Uninstall registry keys
++- [x] Icon extraction for apps/programs
++- [ ] Verify `UserAssist` binary offsets against a real Windows 10/11 machine
++- [ ] Resolve actual `.lnk` targets for Recent Files (currently returns the shortcut path)
++- [ ] Cache Installed Programs to disk, refresh on an interval instead of every launch
++- [ ] Packaged installer (`electron-builder` / `electron-forge`)
++- [ ] Drag-to-reorder favorites, per-tab pinning
++- [ ] Dark/light theme toggle (currently dark-only)
+ 
+ ---
+ 
+-## 📄 License
++## License
+ 
+-MIT License  
+-Copyright © 2026 AlexKitipov
++See [`LICENSE`](./LICENSE).
+diff --git a/electron/main.ts b/electron/main.ts
+index c4db567..1167a71 100644
+--- a/electron/main.ts
++++ b/electron/main.ts
+@@ -1,21 +1,11 @@
+ import { app, BrowserWindow, ipcMain, shell } from 'electron';
+ import path from 'node:path';
+-import fs from 'node:fs/promises';
+-import os from 'node:os';
+ 
+-// Mirrors src/types/favorites.ts. Duplicated here (rather than imported)
+-// because the Electron main process is compiled separately — CommonJS,
+-// Node context (see tsconfig.electron.json) — from the React renderer,
+-// which is ESM bundled by Vite. Keeping this file free of cross-project
+-// imports avoids module-resolution headaches between the two build setups.
+-type SourceBrowser = 'chrome' | 'edge' | 'firefox' | 'brave';
+-
+-interface FavoriteItem {
+-  id: string;
+-  title: string;
+-  url: string;
+-  sourceBrowser: SourceBrowser;
+-}
++import { getAllBookmarks } from './services/bookmarks';
++import { getRecentApps } from './services/windows/recentApps';
++import { getRecentFiles } from './services/windows/recentFiles';
++import { getInstalledPrograms } from './services/windows/installedPrograms';
++import { getIconAsDataUrl } from './services/windows/icons';
+ 
+ const isDev = process.env.NODE_ENV === 'development';
+ 
+@@ -56,94 +46,16 @@ app.on('window-all-closed', () => {
+ });
+ 
+ // ---------------------------------------------------------------------------
+-// Bookmark reading (real implementation — replaces the mock data loader)
++// IPC handlers — each mirrors one method on the `window.api` surface exposed
++// by preload.ts. Keeping the actual data-reading logic in electron/services/
++// means this file stays a plain "wire it up" layer.
+ // ---------------------------------------------------------------------------
+ 
+-const chromeBookmarksPath = path.join(
+-  os.homedir(),
+-  'AppData', 'Local', 'Google', 'Chrome', 'User Data', 'Default', 'Bookmarks'
+-);
+-const edgeBookmarksPath = path.join(
+-  os.homedir(),
+-  'AppData', 'Local', 'Microsoft', 'Edge', 'User Data', 'Default', 'Bookmarks'
+-);
+-// Bonus: Brave uses the same Chromium bookmark format as Chrome/Edge, so it's
+-// effectively free to support once the generic reader exists.
+-const braveBookmarksPath = path.join(
+-  os.homedir(),
+-  'AppData', 'Local', 'BraveSoftware', 'Brave-Browser', 'User Data', 'Default', 'Bookmarks'
+-);
+-
+-// Chromium-based browsers (Chrome, Edge, Brave) all store bookmarks as JSON
+-// with the same tree shape: { roots: { bookmark_bar, other, synced }, ... }.
+-// Folders have `type: "folder"` + `children`; actual bookmarks have
+-// `type: "url"` + `name` + `url`.
+-async function readChromiumBookmarks(
+-  bookmarksFilePath: string,
+-  sourceBrowser: 'chrome' | 'edge' | 'brave'
+-): Promise<FavoriteItem[]> {
+-  try {
+-    const raw = await fs.readFile(bookmarksFilePath, 'utf-8');
+-    const json = JSON.parse(raw);
+-    const items: FavoriteItem[] = [];
+-
+-    function walk(node: any) {
+-      if (!node) return;
+-      if (node.type === 'url' && typeof node.url === 'string') {
+-        items.push({
+-          id: typeof node.guid === 'string' ? node.guid : `${sourceBrowser}-${items.length}`,
+-          title: typeof node.name === 'string' && node.name.length > 0 ? node.name : node.url,
+-          url: node.url,
+-          sourceBrowser
+-        });
+-      } else if (Array.isArray(node.children)) {
+-        node.children.forEach(walk);
+-      }
+-    }
+-
+-    const roots = json.roots ?? {};
+-    Object.values(roots).forEach(walk);
+-
+-    return items;
+-  } catch (err) {
+-    // Missing file (browser not installed, or never used on this machine) or
+-    // unreadable JSON — treat as "no bookmarks from this browser" rather than
+-    // failing the whole aggregation.
+-    console.warn(`[bookmarks] Could not read ${sourceBrowser} bookmarks at ${bookmarksFilePath}:`, err);
+-    return [];
+-  }
+-}
+-
+-// TODO: Firefox bookmarks live in a SQLite database (places.sqlite), not
+-// JSON, so this needs a SQLite driver — Node has no built-in one. Suggested
+-// approach once ready to implement:
+-//
+-//   1. npm install better-sqlite3
+-//   2. Find the active profile folder: Firefox profile folder names are
+-//      randomized (e.g. "xxxxxxxx.default-release"), so first read
+-//      `%APPDATA%\Mozilla\Firefox\profiles.ini` to find the right one.
+-//   3. The places.sqlite file is often locked while Firefox is running, so
+-//      copy it to a temp path first (fs.copyFile) and query the copy.
+-//   4. Query:
+-//        SELECT moz_bookmarks.title, moz_places.url
+-//        FROM moz_bookmarks
+-//        JOIN moz_places ON moz_bookmarks.fk = moz_places.id
+-//        WHERE moz_bookmarks.type = 1 AND moz_places.url IS NOT NULL
+-//   5. Map each row to a FavoriteItem with sourceBrowser: 'firefox'.
+-async function readFirefoxBookmarks(): Promise<FavoriteItem[]> {
+-  return [];
+-}
+-
+-ipcMain.handle('get-bookmarks', async (): Promise<FavoriteItem[]> => {
+-  const [chrome, edge, brave, firefox] = await Promise.all([
+-    readChromiumBookmarks(chromeBookmarksPath, 'chrome'),
+-    readChromiumBookmarks(edgeBookmarksPath, 'edge'),
+-    readChromiumBookmarks(braveBookmarksPath, 'brave'),
+-    readFirefoxBookmarks()
+-  ]);
+-
+-  return [...chrome, ...edge, ...brave, ...firefox];
+-});
++ipcMain.handle('get-bookmarks', () => getAllBookmarks());
++ipcMain.handle('get-recent-apps', () => getRecentApps());
++ipcMain.handle('get-recent-files', () => getRecentFiles());
++ipcMain.handle('get-installed-programs', () => getInstalledPrograms());
++ipcMain.handle('get-icon', (_event, targetPath: string) => getIconAsDataUrl(targetPath));
+ 
+ ipcMain.handle('open-external', async (_event, url: string) => {
+   await shell.openExternal(url);
+diff --git a/electron/preload.ts b/electron/preload.ts
+index f9d2adc..76bcbcd 100644
+--- a/electron/preload.ts
++++ b/electron/preload.ts
+@@ -1,23 +1,20 @@
+ import { contextBridge, ipcRenderer } from 'electron';
+-
+-// Mirrors src/types/favorites.ts — see the note in electron/main.ts about
+-// why this isn't a shared import across the two build targets.
+-type SourceBrowser = 'chrome' | 'edge' | 'firefox' | 'brave';
+-
+-interface FavoriteItem {
+-  id: string;
+-  title: string;
+-  url: string;
+-  sourceBrowser: SourceBrowser;
+-}
++import type { FavoriteItem, RecentApp, RecentFile, InstalledProgram } from './types';
+ 
+ // Everything exposed here becomes available in the renderer as `window.api`.
+ // contextIsolation is on (see main.ts), so this is the only bridge between
+-// the untrusted renderer and privileged Node/Electron APIs — keep it narrow.
++// the untrusted renderer and privileged Node/Electron APIs — keep it narrow,
++// one method per IPC channel, no raw ipcRenderer access.
+ contextBridge.exposeInMainWorld('api', {
+   getBookmarks: (): Promise<FavoriteItem[]> => ipcRenderer.invoke('get-bookmarks'),
++  getRecentApps: (): Promise<RecentApp[]> => ipcRenderer.invoke('get-recent-apps'),
++  getRecentFiles: (): Promise<RecentFile[]> => ipcRenderer.invoke('get-recent-files'),
++  getInstalledPrograms: (): Promise<InstalledProgram[]> => ipcRenderer.invoke('get-installed-programs'),
++
++  // Returns a "data:image/png;base64,..." URL, or null if extraction failed.
++  getIcon: (targetPath: string): Promise<string | null> => ipcRenderer.invoke('get-icon', targetPath),
+ 
+-  // Opens a URL with the OS's default browser instead of navigating the
+-  // Electron window itself. Used by FavoriteCard when running inside Electron.
++  // Opens a URL/path with the OS's default handler instead of navigating the
++  // Electron window itself.
+   openExternal: (url: string): Promise<void> => ipcRenderer.invoke('open-external', url)
+ });
+diff --git a/electron/services/bookmarks/chromium.ts b/electron/services/bookmarks/chromium.ts
+new file mode 100644
+index 0000000..b9d1cd4
+--- /dev/null
++++ b/electron/services/bookmarks/chromium.ts
+@@ -0,0 +1,67 @@
++import fs from 'node:fs/promises';
++import path from 'node:path';
++import os from 'node:os';
++import type { FavoriteItem, SourceBrowser } from '../../types';
++
++type ChromiumBrowser = Extract<SourceBrowser, 'chrome' | 'edge' | 'brave'>;
++
++const CHROMIUM_PROFILE_DIRS: Record<ChromiumBrowser, string[]> = {
++  chrome: ['Google', 'Chrome'],
++  edge: ['Microsoft', 'Edge'],
++  brave: ['BraveSoftware', 'Brave-Browser']
++};
++
++function bookmarksPathFor(browser: ChromiumBrowser): string {
++  return path.join(os.homedir(), 'AppData', 'Local', ...CHROMIUM_PROFILE_DIRS[browser], 'User Data', 'Default', 'Bookmarks');
++}
++
++// Chromium-based browsers (Chrome, Edge, Brave) all store bookmarks as JSON
++// with the same tree shape: { roots: { bookmark_bar, other, synced }, ... }.
++// Folders have `type: "folder"` + `children`; actual bookmarks have
++// `type: "url"` + `name` + `url`.
++async function readChromiumBookmarks(browser: ChromiumBrowser): Promise<FavoriteItem[]> {
++  const bookmarksFilePath = bookmarksPathFor(browser);
++
++  try {
++    const raw = await fs.readFile(bookmarksFilePath, 'utf-8');
++    const json = JSON.parse(raw);
++    const items: FavoriteItem[] = [];
++
++    function walk(node: any) {
++      if (!node) return;
++      if (node.type === 'url' && typeof node.url === 'string') {
++        items.push({
++          id: typeof node.guid === 'string' ? node.guid : `${browser}-${items.length}`,
++          title: typeof node.name === 'string' && node.name.length > 0 ? node.name : node.url,
++          url: node.url,
++          sourceBrowser: browser
++        });
++      } else if (Array.isArray(node.children)) {
++        node.children.forEach(walk);
++      }
++    }
++
++    const roots = json.roots ?? {};
++    Object.values(roots).forEach(walk);
++
++    return items;
++  } catch (err) {
++    // Missing file (browser not installed, or never used on this machine) or
++    // unreadable JSON — treat as "no bookmarks from this browser" rather than
++    // failing the whole aggregation.
++    console.warn(`[bookmarks] Could not read ${browser} bookmarks at ${bookmarksFilePath}:`, err);
++    return [];
++  }
++}
++
++export async function readChromeBookmarks(): Promise<FavoriteItem[]> {
++  return readChromiumBookmarks('chrome');
++}
++
++export async function readEdgeBookmarks(): Promise<FavoriteItem[]> {
++  return readChromiumBookmarks('edge');
++}
++
++export async function readBraveBookmarks(): Promise<FavoriteItem[]> {
++  return readChromiumBookmarks('brave');
++}
+diff --git a/electron/services/bookmarks/firefox.ts b/electron/services/bookmarks/firefox.ts
+new file mode 100644
+index 0000000..611546b
+--- /dev/null
++++ b/electron/services/bookmarks/firefox.ts
+@@ -0,0 +1,138 @@
++import fs from 'node:fs/promises';
++import fsSync from 'node:fs';
++import path from 'node:path';
++import os from 'node:os';
++import { randomUUID } from 'node:crypto';
++import type { FavoriteItem } from '../../types';
++
++// Firefox bookmarks live in a SQLite database (places.sqlite), not JSON like
++// the Chromium browsers, so this needs an actual SQLite driver — Node has no
++// built-in one. Add it as a dependency first:
++//
++//   npm install better-sqlite3
++//   npm install -D @types/better-sqlite3
++//
++// better-sqlite3 is required lazily below (see `loadDriver`) so the rest of
++// the app still runs even if it hasn't been installed yet — readFirefoxBookmarks
++// just logs a warning and returns an empty list in that case.
++
++function loadDriver(): typeof import('better-sqlite3') | null {
++  try {
++    // eslint-disable-next-line @typescript-eslint/no-var-requires
++    return require('better-sqlite3');
++  } catch {
++    return null;
++  }
++}
++
++// Firefox profile folder names are randomized (e.g. "xxxxxxxx.default-release"),
++// so the active profile has to be resolved from profiles.ini first rather than
++// assumed. This is a minimal parser for just the fields we need — profiles.ini
++// is a plain INI file with one [ProfileN] / [Install...] section per profile.
++async function resolveDefaultProfileDir(): Promise<string | null> {
++  const firefoxRoot = path.join(os.homedir(), 'AppData', 'Roaming', 'Mozilla', 'Firefox');
++  const iniPath = path.join(firefoxRoot, 'profiles.ini');
++
++  let raw: string;
++  try {
++    raw = await fs.readFile(iniPath, 'utf-8');
++  } catch (err) {
++    console.warn('[bookmarks] Could not read Firefox profiles.ini:', err);
++    return null;
++  }
++
++  const sections = raw.split(/\r?\n(?=\[)/).map((block) => {
++    const lines = block.split(/\r?\n/).filter(Boolean);
++    const header = lines[0]?.trim() ?? '';
++    const fields: Record<string, string> = {};
++    for (const line of lines.slice(1)) {
++      const [key, ...rest] = line.split('=');
++      if (key) fields[key.trim()] = rest.join('=').trim();
++    }
++    return { header, fields };
++  });
++
++  // Prefer an explicit [Install...] "Default=" pointer (modern Firefox),
++  // falling back to the first Profile section with Default=1, then just the
++  // first profile section at all.
++  const installSection = sections.find((s) => s.header.startsWith('[Install'));
++  const defaultPath =
++    installSection?.fields.Default ??
++    sections.find((s) => s.header.startsWith('[Profile') && s.fields.Default === '1')?.fields.Path ??
++    sections.find((s) => s.header.startsWith('[Profile'))?.fields.Path;
++
++  const isRelative =
++    sections.find((s) => s.fields.Path === defaultPath)?.fields.IsRelative !== '0';
++
++  if (!defaultPath) return null;
++
++  return isRelative ? path.join(firefoxRoot, defaultPath) : defaultPath;
++}
++
++// places.sqlite is frequently locked while Firefox is running (SQLite's
++// default locking prevents a second process from safely reading it). Copying
++// to a temp file first sidesteps that — it's a snapshot, not fully live, but
++// good enough for a bookmarks start page.
++async function copyToTempCopy(originalPath: string): Promise<string> {
++  const tempPath = path.join(os.tmpdir(), `favorites-hub-places-${randomUUID()}.sqlite`);
++  await fs.copyFile(originalPath, tempPath);
++  return tempPath;
++}
++
++export async function readFirefoxBookmarks(): Promise<FavoriteItem[]> {
++  const Database = loadDriver();
++  if (!Database) {
++    console.warn('[bookmarks] better-sqlite3 is not installed — skipping Firefox bookmarks. Run `npm install better-sqlite3`.');
++    return [];
++  }
++
++  const profileDir = await resolveDefaultProfileDir();
++  if (!profileDir) {
++    console.warn('[bookmarks] Could not resolve a Firefox profile — skipping Firefox bookmarks.');
++    return [];
++  }
++
++  const placesPath = path.join(profileDir, 'places.sqlite');
++  if (!fsSync.existsSync(placesPath)) {
++    console.warn(`[bookmarks] No places.sqlite found at ${placesPath} — skipping Firefox bookmarks.`);
++    return [];
++  }
++
++  let tempCopyPath: string | null = null;
++  try {
++    tempCopyPath = await copyToTempCopy(placesPath);
++    const db = new Database(tempCopyPath, { readonly: true, fileMustExist: true });
++
++    try {
++      // moz_bookmarks.type = 1 means "bookmark" (as opposed to a folder or
++      // separator). moz_bookmarks.fk points at moz_places.id, which holds
++      // the actual URL.
++      const rows = db
++        .prepare(
++          `SELECT moz_bookmarks.id as id, moz_bookmarks.title as title, moz_places.url as url
++           FROM moz_bookmarks
++           JOIN moz_places ON moz_bookmarks.fk = moz_places.id
++           WHERE moz_bookmarks.type = 1 AND moz_places.url IS NOT NULL`
++        )
++        .all() as { id: number; title: string | null; url: string }[];
++
++      return rows.map((row) => ({
++        id: `firefox-${row.id}`,
++        title: row.title && row.title.length > 0 ? row.title : row.url,
++        url: row.url,
++        sourceBrowser: 'firefox' as const
++      }));
++    } finally {
++      db.close();
++    }
++  } catch (err) {
++    console.warn('[bookmarks] Failed to read Firefox places.sqlite:', err);
++    return [];
++  } finally {
++    if (tempCopyPath) {
++      fs.unlink(tempCopyPath).catch(() => {
++        /* best effort cleanup */
++      });
++    }
++  }
++}
+diff --git a/electron/services/bookmarks/index.ts b/electron/services/bookmarks/index.ts
+new file mode 100644
+index 0000000..a8a4b88
+--- /dev/null
++++ b/electron/services/bookmarks/index.ts
+@@ -0,0 +1,14 @@
++import type { FavoriteItem } from '../../types';
++import { readChromeBookmarks, readEdgeBookmarks, readBraveBookmarks } from './chromium';
++import { readFirefoxBookmarks } from './firefox';
++
++export async function getAllBookmarks(): Promise<FavoriteItem[]> {
++  const [chrome, edge, brave, firefox] = await Promise.all([
++    readChromeBookmarks(),
++    readEdgeBookmarks(),
++    readBraveBookmarks(),
++    readFirefoxBookmarks()
++  ]);
++
++  return [...chrome, ...edge, ...brave, ...firefox];
++}
+diff --git a/electron/services/windows/icons.ts b/electron/services/windows/icons.ts
+new file mode 100644
+index 0000000..51df7a1
+--- /dev/null
++++ b/electron/services/windows/icons.ts
+@@ -0,0 +1,56 @@
++import { execFile } from 'node:child_process';
++import { promisify } from 'node:util';
++
++const execFileAsync = promisify(execFile);
++
++// Node has no built-in way to pull the icon Windows Explorer shows for a
++// .exe/.dll/shortcut — that's a Win32 shell API (SHGetFileInfo or
++// System.Drawing.Icon.ExtractAssociatedIcon). Rather than add a native
++// addon (ABI-version-pinned to the exact Electron build, painful to keep
++// working across upgrades), shell out to PowerShell, which has direct
++// access to System.Drawing via .NET. The script extracts the icon, encodes
++// it as PNG, and prints it as base64 to stdout.
++const EXTRACT_ICON_SCRIPT = `
++Add-Type -AssemblyName System.Drawing
++param($TargetPath)
++try {
++  $icon = [System.Drawing.Icon]::ExtractAssociatedIcon($TargetPath)
++  if ($null -eq $icon) { exit 1 }
++  $ms = New-Object System.IO.MemoryStream
++  $icon.ToBitmap().Save($ms, [System.Drawing.Imaging.ImageFormat]::Png)
++  [Convert]::ToBase64String($ms.ToArray())
++} catch {
++  exit 1
++}
++`.trim();
++
++const cache = new Map<string, string | null>();
++
++// Returns a "data:image/png;base64,..." URL, or null if extraction failed
++// (missing file, no associated icon, PowerShell unavailable, etc). Results
++// are cached in-process since the same handful of exe paths tend to repeat
++// across Recent Apps / Installed Programs and icon extraction is relatively
++// slow (spawns a PowerShell process per call).
++export async function getIconAsDataUrl(targetPath: string): Promise<string | null> {
++  if (cache.has(targetPath)) return cache.get(targetPath)!;
++
++  try {
++    const { stdout } = await execFileAsync('powershell', [
++      '-NoProfile',
++      '-NonInteractive',
++      '-Command',
++      EXTRACT_ICON_SCRIPT,
++      '-TargetPath',
++      targetPath
++    ]);
++
++    const base64 = stdout.trim();
++    const result = base64.length > 0 ? `data:image/png;base64,${base64}` : null;
++    cache.set(targetPath, result);
++    return result;
++  } catch (err) {
++    console.warn(`[icons] Could not extract icon for ${targetPath}:`, err);
++    cache.set(targetPath, null);
++    return null;
++  }
++}
+diff --git a/electron/services/windows/installedPrograms.ts b/electron/services/windows/installedPrograms.ts
+new file mode 100644
+index 0000000..5aea477
+--- /dev/null
++++ b/electron/services/windows/installedPrograms.ts
+@@ -0,0 +1,52 @@
++import type { InstalledProgram } from '../../types';
++import { queryKey, listSubkeys } from './registry';
++
++// The canonical list of "installed programs" (the same one Control Panel /
++// Settings > Apps reads from) lives in the registry, not the Start Menu —
++// Start Menu shortcuts are a reasonable secondary signal but plenty of
++// installers don't create one, and some create several. These are the three
++// standard locations, covering per-machine (32 and 64-bit) and per-user
++// installs:
++const UNINSTALL_KEYS = [
++  'HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall',
++  'HKLM\\SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall',
++  'HKCU\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall'
++];
++
++export async function getInstalledPrograms(): Promise<InstalledProgram[]> {
++  const programs = new Map<string, InstalledProgram>();
++
++  for (const uninstallKey of UNINSTALL_KEYS) {
++    const productKeys = await listSubkeys(uninstallKey);
++
++    // Reading each product's values is its own `reg query` call — for a
++    // typical machine (50-150 entries under Uninstall) this is on the order
++    // of a few seconds. Fine for a one-time load on app startup; if this
++    // ever needs to be snappier, cache the result and refresh on an interval
++    // instead of on every renderer request.
++    const results = await Promise.all(
++      productKeys.map(async (key) => {
++        const { values } = await queryKey(key);
++        const byName = Object.fromEntries(values.map((v) => [v.name, v.data]));
++        return byName;
++      })
++    );
++
++    for (const values of results) {
++      const name = values.DisplayName;
++      if (!name) continue; // Entries without a DisplayName are usually system components, not real apps.
++      if (values.SystemComponent === '0x1') continue; // Explicitly flagged as "hidden" by its installer.
++
++      // Prefer a real install path; fall back to the uninstall string's exe,
++      // since DisplayIcon sometimes points at the exe too.
++      const installLocation = values.InstallLocation || '';
++      const icon = values.DisplayIcon ? values.DisplayIcon.split(',')[0] : undefined;
++
++      if (!programs.has(name)) {
++        programs.set(name, { name, path: installLocation, icon });
++      }
++    }
++  }
++
++  return Array.from(programs.values()).sort((a, b) => a.name.localeCompare(b.name));
++}
+diff --git a/electron/services/windows/recentApps.ts b/electron/services/windows/recentApps.ts
+new file mode 100644
+index 0000000..f69fd49
+--- /dev/null
++++ b/electron/services/windows/recentApps.ts
+@@ -0,0 +1,99 @@
++import path from 'node:path';
++import type { RecentApp } from '../../types';
++import { queryKey, listSubkeys } from './registry';
++
++// Windows tracks how often and when Explorer-launched items (Start Menu,
++// desktop, taskbar — anything launched "as a user", not from a terminal)
++// were run in the UserAssist registry key. Each launched item gets its own
++// GUID-named subkey grouping ("folder" = {GUID}\Count), and inside that, one
++// value per launched item. Two quirks make this trickier than a normal
++// registry read:
++//
++//   1. Value NAMES are ROT13-"encoded" (a leftover Windows XP-era obfuscation
++//      that Microsoft never removed) — e.g. "Cebtenz Svyrf" decodes to
++//      "Program Files".
++//   2. Value DATA is a binary blob containing a run counter and a FILETIME
++//      timestamp of the last run, not just plain text.
++//
++// CAVEAT: the exact binary layout below (offsets for run count / last-run
++// FILETIME) matches the commonly documented Windows 7+ "UserAssist format
++// version 5" (72-byte entries) used in DFIR/forensics references. Microsoft
++// has never publicly documented this format and it has changed across
++// Windows versions before, so treat this as best-effort — verify against a
++// real machine (e.g. compare a decoded timestamp with a known-recent app
++// launch) before relying on it, and adjust OFFSET_* below if it's off.
++const USERASSIST_ROOT = 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\UserAssist';
++
++const OFFSET_RUN_COUNT = 4; // DWORD
++const OFFSET_LAST_RUN_FILETIME = 60; // FILETIME (8 bytes, little-endian)
++const MIN_ENTRY_LENGTH_BYTES = 68;
++
++function rot13(input: string): string {
++  return input.replace(/[a-zA-Z]/g, (char) => {
++    const base = char <= 'Z' ? 65 : 97;
++    return String.fromCharCode(((char.charCodeAt(0) - base + 13) % 26) + base);
++  });
++}
++
++// Windows FILETIME: 100-nanosecond intervals since 1601-01-01 UTC.
++function filetimeToDate(low: number, high: number): Date | null {
++  if (low === 0 && high === 0) return null;
++  const filetime = high * 2 ** 32 + low;
++  const EPOCH_DIFF_MS = 11644473600000; // ms between 1601-01-01 and 1970-01-01
++  const ms = filetime / 10000 - EPOCH_DIFF_MS;
++  return new Date(ms);
++}
++
++function parseBinaryHex(hex: string): { runCount: number; lastRun: Date | null } | null {
++  const bytes = hex.match(/.{1,2}/g)?.map((b) => parseInt(b, 16)) ?? [];
++  if (bytes.length < MIN_ENTRY_LENGTH_BYTES) return null;
++
++  const runCount = bytes[OFFSET_RUN_COUNT] | (bytes[OFFSET_RUN_COUNT + 1] << 8) | (bytes[OFFSET_RUN_COUNT + 2] << 16) | (bytes[OFFSET_RUN_COUNT + 3] << 24);
++
++  const low =
++    bytes[OFFSET_LAST_RUN_FILETIME] |
++    (bytes[OFFSET_LAST_RUN_FILETIME + 1] << 8) |
++    (bytes[OFFSET_LAST_RUN_FILETIME + 2] << 16) |
++    (bytes[OFFSET_LAST_RUN_FILETIME + 3] << 24);
++  const high =
++    bytes[OFFSET_LAST_RUN_FILETIME + 4] |
++    (bytes[OFFSET_LAST_RUN_FILETIME + 5] << 8) |
++    (bytes[OFFSET_LAST_RUN_FILETIME + 6] << 16) |
++    (bytes[OFFSET_LAST_RUN_FILETIME + 7] << 24);
++
++  return { runCount, lastRun: filetimeToDate(low >>> 0, high >>> 0) };
++}
++
++export async function getRecentApps(): Promise<RecentApp[]> {
++  const guidSubkeys = await listSubkeys(USERASSIST_ROOT);
++  const apps: RecentApp[] = [];
++
++  for (const guidKey of guidSubkeys) {
++    const { values } = await queryKey(`${guidKey}\\Count`);
++
++    for (const value of values) {
++      // The session-marker entry, not a real launched item.
++      if (value.name === 'UEME_CTLSESSION') continue;
++
++      const decodedPath = rot13(value.name);
++      const parsed = value.type === 'REG_BINARY' ? parseBinaryHex(value.data.replace(/\s/g, '')) : null;
++      if (!parsed || !parsed.lastRun) continue;
++
++      apps.push({
++        name: path.basename(decodedPath).replace(/\.(exe|lnk)$/i, ''),
++        path: decodedPath,
++        lastUsed: parsed.lastRun
++      });
++    }
++  }
++
++  // Same app can appear under multiple UserAssist GUID groupings (e.g. once
++  // via Start Menu, once via taskbar pin) — keep the most recent instance.
++  const deduped = new Map<string, RecentApp>();
++  for (const app of apps) {
++    const existing = deduped.get(app.path);
++    if (!existing || app.lastUsed > existing.lastUsed) deduped.set(app.path, app);
++  }
++
++  return Array.from(deduped.values()).sort((a, b) => b.lastUsed.getTime() - a.lastUsed.getTime());
++}
+diff --git a/electron/services/windows/recentFiles.ts b/electron/services/windows/recentFiles.ts
+new file mode 100644
+index 0000000..83de8a7
+--- /dev/null
++++ b/electron/services/windows/recentFiles.ts
+@@ -0,0 +1,58 @@
++import fs from 'node:fs/promises';
++import path from 'node:path';
++import os from 'node:os';
++import type { RecentFile } from '../../types';
++
++// Windows maintains a live "Recent" folder (the same list that powers
++// Explorer's Quick Access "Recent files" and each app's Jump List union) at
++// %AppData%\Microsoft\Windows\Recent — every entry is a .lnk shortcut named
++// after the file it points to. This is a much simpler and more reliable
++// source than trying to reconstruct per-application MRU lists from the
++// registry (those live under each app's own key, in inconsistent formats).
++const RECENT_DIR = path.join(os.homedir(), 'AppData', 'Roaming', 'Microsoft', 'Windows', 'Recent');
++
++function extensionToType(fileName: string): string {
++  const ext = path.extname(fileName).replace('.', '');
++  return ext.length > 0 ? ext.toUpperCase() : 'FILE';
++}
++
++export async function getRecentFiles(): Promise<RecentFile[]> {
++  let entries: string[];
++  try {
++    entries = await fs.readdir(RECENT_DIR);
++  } catch (err) {
++    console.warn(`[recent-files] Could not read ${RECENT_DIR}:`, err);
++    return [];
++  }
++
++  const lnkFiles = entries.filter((name) => name.toLowerCase().endsWith('.lnk'));
++
++  const files = await Promise.all(
++    lnkFiles.map(async (lnkName): Promise<RecentFile | null> => {
++      try {
++        const fullLnkPath = path.join(RECENT_DIR, lnkName);
++        const stat = await fs.stat(fullLnkPath);
++        const targetName = lnkName.replace(/\.lnk$/i, '');
++
++        return {
++          name: targetName,
++          // Note: this is the shortcut's own path, not the resolved target
++          // path. Resolving the actual target requires parsing the binary
++          // .lnk format (or shelling out to a small PowerShell/WScript.Shell
++          // helper — see getIconForPath in icons.ts for the same pattern).
++          // Left as the shortcut path for now since it's enough to identify
++          // and re-open "the same recent item" from the UI.
++          path: fullLnkPath,
++          type: extensionToType(targetName),
++          lastOpened: stat.mtime
++        };
++      } catch {
++        return null;
++      }
++    })
++  );
++
++  return files
++    .filter((f): f is RecentFile => f !== null)
++    .sort((a, b) => b.lastOpened.getTime() - a.lastOpened.getTime());
++}
+diff --git a/electron/services/windows/registry.ts b/electron/services/windows/registry.ts
+new file mode 100644
+index 0000000..83c9a8d
+--- /dev/null
++++ b/electron/services/windows/registry.ts
+@@ -0,0 +1,60 @@
++import { execFile } from 'node:child_process';
++import { promisify } from 'node:util';
++
++const execFileAsync = promisify(execFile);
++
++// Node has no built-in Windows registry API, and adding a native module
++// (e.g. `winreg`, `regedit`) means dealing with prebuilt binaries per Node/
++// Electron ABI version. Shelling out to the `reg.exe` that ships with every
++// Windows install avoids that entirely, at the cost of slightly uglier
++// output parsing.
++
++export interface RegistryValue {
++  name: string;
++  type: string;
++  data: string;
++}
++
++// `reg query "<key>"` (no /s) lists the value entries directly under that
++// key, plus a blank-line-separated list of immediate subkey paths. Value
++// lines look like:
++//   "    DisplayName    REG_SZ    Some App"
++// Subkey lines are just the full path, e.g.:
++//   "HKEY_LOCAL_MACHINE\...\Uninstall\{GUID}"
++export async function queryKey(fullKeyPath: string): Promise<{ values: RegistryValue[]; subkeys: string[] }> {
++  try {
++    const { stdout } = await execFileAsync('reg', ['query', fullKeyPath]);
++    const lines = stdout.split(/\r?\n/).filter((l) => l.length > 0);
++
++    const values: RegistryValue[] = [];
++    const subkeys: string[] = [];
++
++    for (const line of lines) {
++      if (line.startsWith(fullKeyPath) || /^[A-Z]+_[A-Z]+\\/.test(line.trim())) {
++        // A line that IS a key path (not indented) is a subkey listing.
++        if (line.trim() !== fullKeyPath) subkeys.push(line.trim());
++        continue;
++      }
++      // Value lines are indented with 4 spaces: "    Name    REG_TYPE    Data"
++      const match = line.match(/^\s{4}(\S.*?)\s{4}(REG_\S+)\s{4}(.*)$/);
++      if (match) {
++        values.push({ name: match[1], type: match[2], data: match[3] });
++      }
++    }
++
++    return { values, subkeys };
++  } catch (err) {
++    // Key not found, or reg.exe unavailable (non-Windows dev machine) —
++    // treat as "no data" rather than throwing, so callers can aggregate
++    // across many keys without one missing key failing everything.
++    return { values: [], subkeys: [] };
++  }
++}
++
++// Recursively lists every subkey path under `fullKeyPath`, one level at a
++// time (breadth-first) up to `maxDepth`. Used for things like the Uninstall
++// key, which is a flat list of GUID/product-code subkeys.
++export async function listSubkeys(fullKeyPath: string): Promise<string[]> {
++  const { subkeys } = await queryKey(fullKeyPath);
++  return subkeys;
++}
+diff --git a/electron/types.ts b/electron/types.ts
+new file mode 100644
+index 0000000..a6d70a5
+--- /dev/null
++++ b/electron/types.ts
+@@ -0,0 +1,35 @@
++// Mirrors src/types/favorites.ts and src/types/future.ts. Duplicated here
++// (rather than imported) because the Electron main process is compiled
++// separately — CommonJS, Node context (see tsconfig.electron.json) — from
++// the React renderer, which is ESM bundled by Vite. Keeping the main
++// process free of cross-project imports avoids module-resolution mismatches
++// between the two build setups.
++
++export type SourceBrowser = 'chrome' | 'edge' | 'firefox' | 'brave';
++
++export interface FavoriteItem {
++  id: string;
++  title: string;
++  url: string;
++  sourceBrowser: SourceBrowser;
++}
++
++export interface RecentApp {
++  name: string;
++  path: string;
++  icon?: string;
++  lastUsed: Date;
++}
++
++export interface RecentFile {
++  name: string;
++  path: string;
++  type: string;
++  lastOpened: Date;
++}
++
++export interface InstalledProgram {
++  name: string;
++  path: string;
++  icon?: string;
++}
+diff --git a/package.json b/package.json
+index 5bc9cd3..7ddad0e 100644
+--- a/package.json
++++ b/package.json
+@@ -5,21 +5,23 @@
+   "type": "module",
+   "main": "dist-electron/main.js",
+   "scripts": {
++    "postinstall": "electron-rebuild -f -w better-sqlite3",
+     "dev": "vite",
+     "build": "tsc -b && vite build",
+     "preview": "vite preview",
+-
+     "electron:build": "tsc -p tsconfig.electron.json",
+     "electron:start": "cross-env NODE_ENV=development electron .",
+     "electron:dev": "concurrently -k -n VITE,TSC,ELECTRON -c blue,yellow,green \"npm:dev\" \"tsc -p tsconfig.electron.json --watch\" \"wait-on tcp:5173 dist-electron/main.js && npm:electron:start\"",
+-
+     "electron:package": "npm run build && npm run electron:build && cross-env NODE_ENV=production electron ."
+   },
+   "dependencies": {
++    "better-sqlite3": "^11.10.0",
+     "react": "^18.3.1",
+     "react-dom": "^18.3.1"
+   },
+   "devDependencies": {
++    "@electron/rebuild": "^3.6.0",
++    "@types/better-sqlite3": "^7.6.13",
+     "@types/node": "^20.14.10",
+     "@types/react": "^18.3.3",
+     "@types/react-dom": "^18.3.0",
+diff --git a/src/components/AllProgramsPage.tsx b/src/components/AllProgramsPage.tsx
+index 752606d..3582820 100644
+--- a/src/components/AllProgramsPage.tsx
++++ b/src/components/AllProgramsPage.tsx
+@@ -1,15 +1,43 @@
+-// Placeholder for a future tab. When implemented, this will likely follow
+-// the same shape as FavoritesPage: a `useInstalledProgramsLoader` hook
+-// returning `InstalledProgram[]` (see src/types/future.ts), plus a
+-// searchable grid of installed applications.
++import { useMemo, useState } from 'react';
++import { useInstalledProgramsLoader } from '../hooks/useInstalledProgramsLoader';
++import { EntityCard } from './EntityCard';
++
+ export function AllProgramsPage() {
++  const { programs, isLoading, error } = useInstalledProgramsLoader();
++  const [query, setQuery] = useState('');
++
++  const filtered = useMemo(() => {
++    const q = query.trim().toLowerCase();
++    if (q.length === 0) return programs;
++    return programs.filter((p) => p.name.toLowerCase().includes(q));
++  }, [programs, query]);
++
+   return (
+-    <section className="placeholder-page">
+-      <p className="placeholder-page__title">All Programs</p>
+-      <p className="placeholder-page__hint">
+-        Not implemented yet. This will list installed programs, backed by an
+-        InstalledProgram[] data source (see src/types/future.ts).
+-      </p>
++    <section className="favorites-page">
++      <div className="favorites-page__toolbar">
++        <input
++          className="search-bar"
++          type="search"
++          placeholder="Search installed programs…"
++          value={query}
++          onChange={(e) => setQuery(e.target.value)}
++          aria-label="Search installed programs"
++        />
++      </div>
++
++      {isLoading && <p className="favorites-page__status">Loading installed programs…</p>}
++      {error && <p className="favorites-page__status favorites-page__status--error">{error}</p>}
++      {!isLoading && !error && filtered.length === 0 && (
++        <p className="favorites-page__status">No programs match this search.</p>
++      )}
++
++      {!isLoading && !error && filtered.length > 0 && (
++        <div className="favorites-grid">
++          {filtered.map((program) => (
++            <EntityCard key={program.name} title={program.name} subtitle="Installed" iconPath={program.icon} />
++          ))}
++        </div>
++      )}
+     </section>
+   );
+ }
+diff --git a/src/components/EntityCard.tsx b/src/components/EntityCard.tsx
+new file mode 100644
+index 0000000..e0f7193
+--- /dev/null
++++ b/src/components/EntityCard.tsx
+@@ -0,0 +1,31 @@
++import { useIconDataUrl } from '../hooks/useIconDataUrl';
++
++interface EntityCardProps {
++  title: string;
++  subtitle: string;
++  iconPath?: string;
++  onClick?: () => void;
++}
++
++// Generic version of FavoriteCard's layout (icon tile + title + small label)
++// for anything that isn't a browser bookmark: recent apps, recent files,
++// installed programs. FavoriteCard stays separate since it has
++// browser-specific concerns (the colored source dot, favicon URLs instead of
++// extracted exe icons) that don't apply here.
++export function EntityCard({ title, subtitle, iconPath, onClick }: EntityCardProps) {
++  const iconUrl = useIconDataUrl(iconPath);
++
++  return (
++    <button className="favorite-card" onClick={onClick} title={subtitle} disabled={!onClick}>
++      <span className="favorite-card__icon-wrap">
++        {iconUrl ? (
++          <img className="favorite-card__icon" src={iconUrl} alt="" loading="lazy" />
++        ) : (
++          <span className="favorite-card__icon-fallback">{title.charAt(0).toUpperCase()}</span>
++        )}
++      </span>
++      <span className="favorite-card__title">{title}</span>
++      <span className="favorite-card__browser-label">{subtitle}</span>
++    </button>
++  );
++}
+diff --git a/src/components/RecentAppsPage.tsx b/src/components/RecentAppsPage.tsx
+index f68eec2..c79c222 100644
+--- a/src/components/RecentAppsPage.tsx
++++ b/src/components/RecentAppsPage.tsx
+@@ -1,15 +1,38 @@
+-// Placeholder for a future tab. When implemented, this will likely follow
+-// the same shape as FavoritesPage: a `useRecentAppsLoader` hook returning
+-// `RecentApp[]` (see src/types/future.ts), plus a grid of cards showing
+-// name, icon, and lastUsed.
++import { useRecentAppsLoader } from '../hooks/useRecentAppsLoader';
++import { EntityCard } from './EntityCard';
++
++function formatRelativeTime(date: Date): string {
++  const diffMs = Date.now() - date.getTime();
++  const minutes = Math.round(diffMs / 60000);
++  if (minutes < 1) return 'just now';
++  if (minutes < 60) return `${minutes}m ago`;
++  const hours = Math.round(minutes / 60);
++  if (hours < 24) return `${hours}h ago`;
++  return `${Math.round(hours / 24)}d ago`;
++}
++
++function launchApp(appPath: string) {
++  if (window.api) {
++    // shell.openExternal also handles launching a local .exe, same as
++    // double-clicking it in Explorer.
++    window.api.openExternal(appPath);
++  }
++}
++
+ export function RecentAppsPage() {
++  const { apps, isLoading, error } = useRecentAppsLoader();
++
++  if (isLoading) return <p className="favorites-page__status">Loading recent apps…</p>;
++  if (error) return <p className="favorites-page__status favorites-page__status--error">{error}</p>;
++  if (apps.length === 0) return <p className="favorites-page__status">No recent apps found.</p>;
++
+   return (
+-    <section className="placeholder-page">
+-      <p className="placeholder-page__title">Recent Apps</p>
+-      <p className="placeholder-page__hint">
+-        Not implemented yet. This will list recently launched programs, backed by a
+-        RecentApp[] data source (see src/types/future.ts).
+-      </p>
++    <section className="favorites-page">
++      <div className="favorites-grid">
++        {apps.map((app) => (
++          <EntityCard key={app.path} title={app.name} subtitle={formatRelativeTime(app.lastUsed)} iconPath={app.path} onClick={() => launchApp(app.path)} />
++        ))}
++      </div>
+     </section>
+   );
+ }
+diff --git a/src/components/RecentFilesPage.tsx b/src/components/RecentFilesPage.tsx
+index 4914e50..441ee0b 100644
+--- a/src/components/RecentFilesPage.tsx
++++ b/src/components/RecentFilesPage.tsx
+@@ -1,15 +1,31 @@
+-// Placeholder for a future tab. When implemented, this will likely follow
+-// the same shape as FavoritesPage: a `useRecentFilesLoader` hook returning
+-// `RecentFile[]` (see src/types/future.ts), plus a grid/list of cards
+-// showing name, type, and lastOpened.
++import { useRecentFilesLoader } from '../hooks/useRecentFilesLoader';
++import { EntityCard } from './EntityCard';
++
++function openInExplorer(filePath: string) {
++  if (window.api) {
++    window.api.openExternal(filePath);
++  }
++}
++
+ export function RecentFilesPage() {
++  const { files, isLoading, error } = useRecentFilesLoader();
++
++  if (isLoading) return <p className="favorites-page__status">Loading recent files…</p>;
++  if (error) return <p className="favorites-page__status favorites-page__status--error">{error}</p>;
++  if (files.length === 0) return <p className="favorites-page__status">No recent files found.</p>;
++
+   return (
+-    <section className="placeholder-page">
+-      <p className="placeholder-page__title">Recent Files</p>
+-      <p className="placeholder-page__hint">
+-        Not implemented yet. This will list recently opened files, backed by a
+-        RecentFile[] data source (see src/types/future.ts).
+-      </p>
++    <section className="favorites-page">
++      <div className="favorites-grid">
++        {files.map((file) => (
++          <EntityCard
++            key={file.path}
++            title={file.name}
++            subtitle={file.type}
++            onClick={() => openInExplorer(file.path)}
++          />
++        ))}
++      </div>
+     </section>
+   );
+ }
+diff --git a/src/hooks/useElectronDataLoader.ts b/src/hooks/useElectronDataLoader.ts
+new file mode 100644
+index 0000000..651ae8c
+--- /dev/null
++++ b/src/hooks/useElectronDataLoader.ts
+@@ -0,0 +1,53 @@
++import { useEffect, useState } from 'react';
++
++interface DataLoaderResult<T> {
++  data: T[];
++  isLoading: boolean;
++  error: string | null;
++}
++
++export function isElectron(): boolean {
++  return typeof window !== 'undefined' && window.api !== undefined;
++}
++
++// Shared shape for every tab's data hook: try the real Electron IPC call
++// first, fall back to mock data when running as a plain browser app (no
++// `window.api`), and normalize loading/error state the same way everywhere.
++//
++// Each concrete hook (useFavoritesLoader, useRecentAppsLoader, ...) just
++// supplies its own `electronLoader` + `mockLoader` and gets consistent
++// { data, isLoading, error } behavior for free.
++export function useElectronDataLoader<T>(
++  electronLoader: () => Promise<T[]>,
++  mockLoader: () => T[] | Promise<T[]>
++): DataLoaderResult<T> {
++  const [data, setData] = useState<T[]>([]);
++  const [isLoading, setIsLoading] = useState(true);
++  const [error, setError] = useState<string | null>(null);
++
++  useEffect(() => {
++    let cancelled = false;
++
++    setIsLoading(true);
++    Promise.resolve(isElectron() ? electronLoader() : mockLoader())
++      .then((items) => {
++        if (cancelled) return;
++        setData(items);
++        setError(null);
++      })
++      .catch((err) => {
++        if (cancelled) return;
++        setError(err instanceof Error ? err.message : 'Failed to load data');
++      })
++      .finally(() => {
++        if (!cancelled) setIsLoading(false);
++      });
++
++    return () => {
++      cancelled = true;
++    };
++    // eslint-disable-next-line react-hooks/exhaustive-deps -- loaders are stable per call site
++  }, []);
++
++  return { data, isLoading, error };
++}
+diff --git a/src/hooks/useFavoritesLoader.ts b/src/hooks/useFavoritesLoader.ts
+index 98e1ea9..94509cd 100644
+--- a/src/hooks/useFavoritesLoader.ts
++++ b/src/hooks/useFavoritesLoader.ts
+@@ -1,5 +1,5 @@
+-import { useEffect, useState } from 'react';
+ import type { FavoriteItem } from '../types/favorites';
++import { useElectronDataLoader } from './useElectronDataLoader';
+ 
+ interface UseFavoritesLoaderResult {
+   favorites: FavoriteItem[];
+@@ -8,8 +8,6 @@ interface UseFavoritesLoaderResult {
+ }
+ 
+ // Builds a favicon URL using Google's public favicon service.
+-// This works from a plain browser context without needing filesystem access
+-// to each browser's own favicon cache.
+ function faviconFor(url: string): string {
+   try {
+     const { hostname } = new URL(url);
+@@ -19,11 +17,6 @@ function faviconFor(url: string): string {
+   }
+ }
+ 
+-// ---------------------------------------------------------------------------
+-// MOCK DATA
+-// ---------------------------------------------------------------------------
+-// This is what the UI renders today. Replace `loadMockFavorites` with a real
+-// loader (see the two real-world strategies documented below) when ready.
+ function loadMockFavorites(): FavoriteItem[] {
+   const raw: Omit<FavoriteItem, 'faviconUrl'>[] = [
+     { id: 'c1', title: 'GitHub', url: 'https://github.com', sourceBrowser: 'chrome' },
+@@ -43,61 +36,14 @@ function loadMockFavorites(): FavoriteItem[] {
+   return raw.map((item) => ({ ...item, faviconUrl: faviconFor(item.url) }));
+ }
+ 
+-// ---------------------------------------------------------------------------
+-// REAL LOADING
+-// ---------------------------------------------------------------------------
+-// A plain browser page (even one served by Vite) CANNOT read arbitrary files
+-// from the user's disk — that's blocked by browser security sandboxing. So
+-// this hook picks its data source at runtime:
+-//
+-//   - Running inside Electron: `window.api` is present (exposed by
+-//     electron/preload.ts via contextBridge). Real bookmarks are read in the
+-//     main process (electron/main.ts, full Node `fs` access) and returned
+-//     here over IPC — no filesystem code runs in the renderer itself.
+-//   - Running as a plain browser app (`npm run dev` without Electron):
+-//     `window.api` is undefined, so this falls back to mock data so the UI
+-//     still has something to render.
+-//
+-// Firefox support is a TODO on the Electron side (see the comment above
+-// `readFirefoxBookmarks` in electron/main.ts) since it needs a SQLite driver
+-// rather than a simple JSON read.
+-async function loadFavorites(): Promise<FavoriteItem[]> {
+-  if (window.api) {
+-    const items = await window.api.getBookmarks();
+-    return items.map((item) => ({ ...item, faviconUrl: faviconFor(item.url) }));
+-  }
+-
+-  // Not running inside Electron — no real fs access available, use mock data.
+-  return loadMockFavorites();
++async function loadElectronFavorites(): Promise<FavoriteItem[]> {
++  // window.api.getBookmarks() aggregates Chrome, Edge, Brave, and Firefox in
++  // the main process — see electron/services/bookmarks/index.ts.
++  const items = await window.api!.getBookmarks();
++  return items.map((item) => ({ ...item, faviconUrl: faviconFor(item.url) }));
+ }
+ 
+ export function useFavoritesLoader(): UseFavoritesLoaderResult {
+-  const [favorites, setFavorites] = useState<FavoriteItem[]>([]);
+-  const [isLoading, setIsLoading] = useState(true);
+-  const [error, setError] = useState<string | null>(null);
+-
+-  useEffect(() => {
+-    let cancelled = false;
+-
+-    setIsLoading(true);
+-    loadFavorites()
+-      .then((items) => {
+-        if (cancelled) return;
+-        setFavorites(items);
+-        setError(null);
+-      })
+-      .catch((err) => {
+-        if (cancelled) return;
+-        setError(err instanceof Error ? err.message : 'Failed to load favorites');
+-      })
+-      .finally(() => {
+-        if (!cancelled) setIsLoading(false);
+-      });
+-
+-    return () => {
+-      cancelled = true;
+-    };
+-  }, []);
+-
+-  return { favorites, isLoading, error };
++  const { data, isLoading, error } = useElectronDataLoader(loadElectronFavorites, loadMockFavorites);
++  return { favorites: data, isLoading, error };
+ }
+diff --git a/src/hooks/useIconDataUrl.ts b/src/hooks/useIconDataUrl.ts
+new file mode 100644
+index 0000000..6c43f2b
+--- /dev/null
++++ b/src/hooks/useIconDataUrl.ts
+@@ -0,0 +1,29 @@
++import { useEffect, useState } from 'react';
++import { isElectron } from './useElectronDataLoader';
++
++// Icon extraction (electron/services/windows/icons.ts) spawns a PowerShell
++// process per unique path, so this is intentionally lazy (only called for
++// cards actually rendered, not the whole list up front) and cached per
++// component instance — the main-process side also caches by path, so
++// re-renders/re-mounts of the same item are cheap too.
++export function useIconDataUrl(targetPath: string | undefined): string | null {
++  const [iconUrl, setIconUrl] = useState<string | null>(null);
++
++  useEffect(() => {
++    if (!targetPath || !isElectron()) {
++      setIconUrl(null);
++      return;
++    }
++
++    let cancelled = false;
++    window.api!.getIcon(targetPath).then((url) => {
++      if (!cancelled) setIconUrl(url);
++    });
++
++    return () => {
++      cancelled = true;
++    };
++  }, [targetPath]);
++
++  return iconUrl;
++}
+diff --git a/src/hooks/useInstalledProgramsLoader.ts b/src/hooks/useInstalledProgramsLoader.ts
+new file mode 100644
+index 0000000..dd256ed
+--- /dev/null
++++ b/src/hooks/useInstalledProgramsLoader.ts
+@@ -0,0 +1,28 @@
++import type { InstalledProgram } from '../types/future';
++import { useElectronDataLoader } from './useElectronDataLoader';
++
++interface UseInstalledProgramsLoaderResult {
++  programs: InstalledProgram[];
++  isLoading: boolean;
++  error: string | null;
++}
++
++function loadMockInstalledPrograms(): InstalledProgram[] {
++  return [
++    { name: 'Google Chrome', path: 'C:\\Program Files\\Google\\Chrome\\Application' },
++    { name: 'Visual Studio Code', path: 'C:\\Program Files\\Microsoft VS Code' },
++    { name: 'Node.js', path: 'C:\\Program Files\\nodejs' },
++    { name: 'Slack', path: 'C:\\Users\\Alex\\AppData\\Local\\slack' }
++  ];
++}
++
++async function loadElectronInstalledPrograms(): Promise<InstalledProgram[]> {
++  // Backed by the Windows Uninstall registry keys — see
++  // electron/services/windows/installedPrograms.ts.
++  return window.api!.getInstalledPrograms();
++}
++
++export function useInstalledProgramsLoader(): UseInstalledProgramsLoaderResult {
++  const { data, isLoading, error } = useElectronDataLoader(loadElectronInstalledPrograms, loadMockInstalledPrograms);
++  return { programs: data, isLoading, error };
++}
+diff --git a/src/hooks/useRecentAppsLoader.ts b/src/hooks/useRecentAppsLoader.ts
+new file mode 100644
+index 0000000..b4b9d39
+--- /dev/null
++++ b/src/hooks/useRecentAppsLoader.ts
+@@ -0,0 +1,28 @@
++import type { RecentApp } from '../types/future';
++import { useElectronDataLoader } from './useElectronDataLoader';
++
++interface UseRecentAppsLoaderResult {
++  apps: RecentApp[];
++  isLoading: boolean;
++  error: string | null;
++}
++
++function loadMockRecentApps(): RecentApp[] {
++  const now = Date.now();
++  return [
++    { name: 'Visual Studio Code', path: 'C:\\Program Files\\Microsoft VS Code\\Code.exe', lastUsed: new Date(now - 10 * 60 * 1000) },
++    { name: 'Slack', path: 'C:\\Users\\Alex\\AppData\\Local\\slack\\slack.exe', lastUsed: new Date(now - 45 * 60 * 1000) },
++    { name: 'Figma', path: 'C:\\Users\\Alex\\AppData\\Local\\Figma\\Figma.exe', lastUsed: new Date(now - 3 * 60 * 60 * 1000) }
++  ];
++}
++
++async function loadElectronRecentApps(): Promise<RecentApp[]> {
++  // Backed by the Windows UserAssist registry key — see
++  // electron/services/windows/recentApps.ts for the decoding details.
++  return window.api!.getRecentApps();
++}
++
++export function useRecentAppsLoader(): UseRecentAppsLoaderResult {
++  const { data, isLoading, error } = useElectronDataLoader(loadElectronRecentApps, loadMockRecentApps);
++  return { apps: data, isLoading, error };
++}
+diff --git a/src/hooks/useRecentFilesLoader.ts b/src/hooks/useRecentFilesLoader.ts
+new file mode 100644
+index 0000000..7f52188
+--- /dev/null
++++ b/src/hooks/useRecentFilesLoader.ts
+@@ -0,0 +1,28 @@
++import type { RecentFile } from '../types/future';
++import { useElectronDataLoader } from './useElectronDataLoader';
++
++interface UseRecentFilesLoaderResult {
++  files: RecentFile[];
++  isLoading: boolean;
++  error: string | null;
++}
++
++function loadMockRecentFiles(): RecentFile[] {
++  const now = Date.now();
++  return [
++    { name: 'Q3-report', path: 'C:\\Users\\Alex\\Documents\\Q3-report.docx', type: 'DOCX', lastOpened: new Date(now - 20 * 60 * 1000) },
++    { name: 'roadmap', path: 'C:\\Users\\Alex\\Documents\\roadmap.xlsx', type: 'XLSX', lastOpened: new Date(now - 2 * 60 * 60 * 1000) },
++    { name: 'architecture-diagram', path: 'C:\\Users\\Alex\\Pictures\\architecture-diagram.png', type: 'PNG', lastOpened: new Date(now - 26 * 60 * 60 * 1000) }
++  ];
++}
++
++async function loadElectronRecentFiles(): Promise<RecentFile[]> {
++  // Backed by the Windows "Recent" shell folder — see
++  // electron/services/windows/recentFiles.ts.
++  return window.api!.getRecentFiles();
++}
++
++export function useRecentFilesLoader(): UseRecentFilesLoaderResult {
++  const { data, isLoading, error } = useElectronDataLoader(loadElectronRecentFiles, loadMockRecentFiles);
++  return { files: data, isLoading, error };
++}
+diff --git a/src/types/electron.d.ts b/src/types/electron.d.ts
+index 3de7ee1..c4703d6 100644
+--- a/src/types/electron.d.ts
++++ b/src/types/electron.d.ts
+@@ -1,11 +1,17 @@
+ import type { FavoriteItem } from './favorites';
++import type { RecentApp, RecentFile, InstalledProgram } from './future';
+ 
+ // Declares the shape of `window.api`, exposed by electron/preload.ts via
+ // contextBridge. Only present when the app is running inside Electron —
+-// always guard with `window.api?.` in the renderer, since the same code
++// always guard with `window.api?.` (or the `isElectron()` helper in
++// src/hooks/useElectronDataLoader.ts) in the renderer, since the same code
+ // also runs as a plain browser app during `npm run dev`.
+ export interface FavoritesElectronAPI {
+   getBookmarks: () => Promise<FavoriteItem[]>;
++  getRecentApps: () => Promise<RecentApp[]>;
++  getRecentFiles: () => Promise<RecentFile[]>;
++  getInstalledPrograms: () => Promise<InstalledProgram[]>;
++  getIcon: (targetPath: string) => Promise<string | null>;
+   openExternal: (url: string) => Promise<void>;
+ }
+ 
+diff --git a/tsconfig.tsbuildinfo b/tsconfig.tsbuildinfo
+deleted file mode 100644
+index 4c148ad..0000000
+--- a/tsconfig.tsbuildinfo
++++ /dev/null
+@@ -1 +0,0 @@
+-{"root":["./src/App.tsx","./src/main.tsx","./src/components/AllProgramsPage.tsx","./src/components/FavoriteCard.tsx","./src/components/FavoritesPage.tsx","./src/components/RecentAppsPage.tsx","./src/components/RecentFilesPage.tsx","./src/components/TabsContainer.tsx","./src/hooks/useFavoritesLoader.ts","./src/types/electron.d.ts","./src/types/favorites.ts","./src/types/future.ts"],"version":"5.9.3"}
+\ No newline at end of file

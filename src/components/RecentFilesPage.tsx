@@ -1,15 +1,31 @@
-// Placeholder for a future tab. When implemented, this will likely follow
-// the same shape as FavoritesPage: a `useRecentFilesLoader` hook returning
-// `RecentFile[]` (see src/types/future.ts), plus a grid/list of cards
-// showing name, type, and lastOpened.
+import { useRecentFilesLoader } from '../hooks/useRecentFilesLoader';
+import { EntityCard } from './EntityCard';
+
+function openInExplorer(filePath: string) {
+  if (window.api) {
+    window.api.openExternal(filePath);
+  }
+}
+
 export function RecentFilesPage() {
+  const { files, isLoading, error } = useRecentFilesLoader();
+
+  if (isLoading) return <p className="favorites-page__status">Loading recent files…</p>;
+  if (error) return <p className="favorites-page__status favorites-page__status--error">{error}</p>;
+  if (files.length === 0) return <p className="favorites-page__status">No recent files found.</p>;
+
   return (
-    <section className="placeholder-page">
-      <p className="placeholder-page__title">Recent Files</p>
-      <p className="placeholder-page__hint">
-        Not implemented yet. This will list recently opened files, backed by a
-        RecentFile[] data source (see src/types/future.ts).
-      </p>
+    <section className="favorites-page">
+      <div className="favorites-grid">
+        {files.map((file) => (
+          <EntityCard
+            key={file.path}
+            title={file.name}
+            subtitle={file.type}
+            onClick={() => openInExplorer(file.path)}
+          />
+        ))}
+      </div>
     </section>
   );
 }

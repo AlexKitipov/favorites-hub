@@ -4,25 +4,29 @@
   "version": "0.1.0",
   "type": "module",
   "main": "dist-electron/main.js",
+  "engines": {
+    "node": ">=18"
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-
-    "electron:build": "tsc -p tsconfig.electron.json",
+    "electron:build": "tsc -p tsconfig.electron.json && node scripts/write-electron-package-json.mjs",
     "electron:start": "cross-env NODE_ENV=development electron .",
-    "electron:dev": "concurrently -k -n VITE,TSC,ELECTRON -c blue,yellow,green \"npm:dev\" \"tsc -p tsconfig.electron.json --watch\" \"wait-on tcp:5173 dist-electron/main.js && npm:electron:start\"",
-
+    "electron:wait-and-start": "wait-on tcp:5173 dist-electron/main.js && npm run electron:start",
+    "electron:dev": "node scripts/write-electron-package-json.mjs && concurrently -k -n VITE,TSC,ELECTRON -c blue,yellow,green \"npm:dev\" \"tsc -p tsconfig.electron.json --watch\" \"npm:electron:wait-and-start\"",
     "electron:package": "npm run build && npm run electron:build && cross-env NODE_ENV=production electron ."
   },
   "dependencies": {
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "sql.js": "^1.11.0"
   },
   "devDependencies": {
     "@types/node": "^20.14.10",
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
+    "@types/sql.js": "^1.4.9",
     "@vitejs/plugin-react": "^4.3.1",
     "concurrently": "^8.2.2",
     "cross-env": "^7.0.3",

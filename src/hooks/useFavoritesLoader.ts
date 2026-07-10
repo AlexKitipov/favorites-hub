@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
 import type { FavoriteItem } from '../types/favorites';
+import { useElectronDataLoader } from './useElectronDataLoader';
 
 interface UseFavoritesLoaderResult {
   favorites: FavoriteItem[];
@@ -8,8 +8,6 @@ interface UseFavoritesLoaderResult {
 }
 
 // Builds a favicon URL using Google's public favicon service.
-// This works from a plain browser context without needing filesystem access
-// to each browser's own favicon cache.
 function faviconFor(url: string): string {
   try {
     const { hostname } = new URL(url);
@@ -19,11 +17,6 @@ function faviconFor(url: string): string {
   }
 }
 
-// ---------------------------------------------------------------------------
-// MOCK DATA
-// ---------------------------------------------------------------------------
-// This is what the UI renders today. Replace `loadMockFavorites` with a real
-// loader (see the two real-world strategies documented below) when ready.
 function loadMockFavorites(): FavoriteItem[] {
   const raw: Omit<FavoriteItem, 'faviconUrl'>[] = [
     { id: 'c1', title: 'GitHub', url: 'https://github.com', sourceBrowser: 'chrome' },
@@ -43,61 +36,14 @@ function loadMockFavorites(): FavoriteItem[] {
   return raw.map((item) => ({ ...item, faviconUrl: faviconFor(item.url) }));
 }
 
-// ---------------------------------------------------------------------------
-// REAL LOADING
-// ---------------------------------------------------------------------------
-// A plain browser page (even one served by Vite) CANNOT read arbitrary files
-// from the user's disk — that's blocked by browser security sandboxing. So
-// this hook picks its data source at runtime:
-//
-//   - Running inside Electron: `window.api` is present (exposed by
-//     electron/preload.ts via contextBridge). Real bookmarks are read in the
-//     main process (electron/main.ts, full Node `fs` access) and returned
-//     here over IPC — no filesystem code runs in the renderer itself.
-//   - Running as a plain browser app (`npm run dev` without Electron):
-//     `window.api` is undefined, so this falls back to mock data so the UI
-//     still has something to render.
-//
-// Firefox support is a TODO on the Electron side (see the comment above
-// `readFirefoxBookmarks` in electron/main.ts) since it needs a SQLite driver
-// rather than a simple JSON read.
-async function loadFavorites(): Promise<FavoriteItem[]> {
-  if (window.api) {
-    const items = await window.api.getBookmarks();
-    return items.map((item) => ({ ...item, faviconUrl: faviconFor(item.url) }));
-  }
-
-  // Not running inside Electron — no real fs access available, use mock data.
-  return loadMockFavorites();
+async function loadElectronFavorites(): Promise<FavoriteItem[]> {
+  // window.api.getBookmarks() aggregates Chrome, Edge, Brave, and Firefox in
+  // the main process — see electron/services/bookmarks/index.ts.
+  const items = await window.api!.getBookmarks();
+  return items.map((item) => ({ ...item, faviconUrl: faviconFor(item.url) }));
 }
 
 export function useFavoritesLoader(): UseFavoritesLoaderResult {
-  const [favorites, setFavorites] = useState<FavoriteItem[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    setIsLoading(true);
-    loadFavorites()
-      .then((items) => {
-        if (cancelled) return;
-        setFavorites(items);
-        setError(null);
-      })
-      .catch((err) => {
-        if (cancelled) return;
-        setError(err instanceof Error ? err.message : 'Failed to load favorites');
-      })
-      .finally(() => {
-        if (!cancelled) setIsLoading(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  return { favorites, isLoading, error };
+  const { data, isLoading, error } = useElectronDataLoader(loadElectronFavorites, loadMockFavorites);
+  return { favorites: data, isLoading, error };
 }
